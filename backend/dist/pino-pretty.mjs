@@ -439,8 +439,8 @@ var require_split2 = __commonJS({
     "use strict";
     var { Transform } = __require("stream");
     var { StringDecoder } = __require("string_decoder");
-    var kLast = /* @__PURE__ */ Symbol("last");
-    var kDecoder = /* @__PURE__ */ Symbol("decoder");
+    var kLast = Symbol("last");
+    var kDecoder = Symbol("decoder");
     function transform(chunk, enc, cb) {
       let list;
       if (this.overflow) {
@@ -538,7 +538,7 @@ var require_split2 = __commonJS({
 var require_pino_abstract_transport = __commonJS({
   "node_modules/pino-pretty/node_modules/pino-abstract-transport/index.js"(exports, module) {
     "use strict";
-    var metadata = /* @__PURE__ */ Symbol.for("pino.metadata");
+    var metadata = Symbol.for("pino.metadata");
     var split = require_split2();
     var { Duplex } = __require("stream");
     var { parentPort, workerData } = __require("worker_threads");

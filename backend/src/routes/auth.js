@@ -457,7 +457,49 @@ router.get("/auth/documents", async (req, res) => {
   }
 });
 
+// Change password endpoint
+router.post("/auth/change-password", async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
 
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
 
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters long" });
+    }
+
+    // Fetch current user
+    const users = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id));
+    const user = users[0];
+
+    if (!user) {
+      return res.status(401).json({ error: "User not found" });
+    }
+
+    // Verify current password
+    const isValid = await verifyPassword(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    // Hash and update new password
+    const hashed = await hashPassword(newPassword);
+    await db
+      .update(usersTable)
+      .set({ password: hashed })
+      .where(eq(usersTable.id, req.user.id));
+
+    return res.json({ success: true, message: "Password changed successfully" });
+  } catch (err) {
+    req.log.error({ err }, "Change password error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;

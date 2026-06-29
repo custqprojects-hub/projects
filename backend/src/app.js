@@ -29,7 +29,7 @@ app.use(pinoHttp({
         },
     },
 }));
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: ["https://starlit-melba-473a25.netlify.app/","http://localhost:3001"], credentials: true }));
 const COOKIE_SECRET = process.env.SESSION_SECRET || "dev-fallback-cookie-secret-change-me";
 app.use(cookieParser(COOKIE_SECRET));
 app.use((req, res, next) => {
