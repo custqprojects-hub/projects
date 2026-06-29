@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ./build.mjs && node --env-file=.env --enable-source-maps ./dist/index.mjs",
-    "build": "node ./build.mjs",
-    "start": "node --env-file=.env --enable-source-maps ./dist/index.mjs"
-  },
+  "dev": "node ./build.mjs && node --env-file=.env --enable-source-maps ./dist/index.mjs",
+  "build": "node ./build.mjs",
+  "start": "node --enable-source-maps ./dist/index.mjs"
+},
   "dependencies": {
     "@electric-sql/pglite": "^0.4.5",
     "@google-cloud/storage": "^7.19.0",
