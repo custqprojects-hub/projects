@@ -502,4 +502,81 @@ router.post("/auth/change-password", async (req, res) => {
   }
 });
 
+// Admin endpoint - change any user's password
+router.post("/auth/admin/change-user-password", requireRole("admin", "clerk"), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const { userId, newPassword } = req.body;
+    
+    if (!userId || !newPassword) {
+      return res.status(400).json({ error: "User ID and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters long" });
+    }
+
+    // Fetch the user to update
+    const users = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    const targetUser = users[0];
+
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Hash and update new password
+    const hashed = await hashPassword(newPassword);
+    const [updatedUser] = await db
+      .update(usersTable)
+      .set({ password: hashed })
+      .where(eq(usersTable.id, userId))
+      .returning();
+
+    return res.json({ 
+      success: true, 
+      message: "Password changed successfully",
+      user: {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        name: updatedUser.name,
+        email: updatedUser.email
+      }
+    });
+  } catch (err) {
+    req.log.error({ err }, "Admin change user password error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Admin endpoint - get user's password (read-only, for display purposes)
+router.get("/auth/admin/user/:userId/password-hint", requireRole("admin", "clerk"), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const { userId } = req.params;
+    
+    const users = await db.select().from(usersTable).where(eq(usersTable.id, parseInt(userId)));
+    const targetUser = users[0];
+
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({ 
+      userId: targetUser.id,
+      username: targetUser.username,
+      name: targetUser.name,
+      hasPassword: !!targetUser.password
+    });
+  } catch (err) {
+    req.log.error({ err }, "Get user password hint error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
