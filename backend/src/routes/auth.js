@@ -490,25 +490,10 @@ router.post("/auth/change-password", async (req, res) => {
 
     // Hash and update new password
     const hashed = await hashPassword(newPassword);
-    const updateResult = await db
+    await db
       .update(usersTable)
       .set({ password: hashed })
-      .where(eq(usersTable.id, req.user.id))
-      .returning();
-
-    if (!updateResult || updateResult.length === 0) {
-      return res.status(500).json({ error: "Password update failed" });
-    }
-
-    // Verify the password was actually updated by fetching fresh from DB
-    const verifyUsers = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id));
-    const verifyUser = verifyUsers[0];
-    const isNewPasswordCorrect = await verifyPassword(newPassword, verifyUser.password);
-    
-    if (!isNewPasswordCorrect) {
-      req.log.error("Password verification failed after update");
-      return res.status(500).json({ error: "Password update verification failed" });
-    }
+      .where(eq(usersTable.id, req.user.id));
 
     return res.json({ success: true, message: "Password changed successfully" });
   } catch (err) {
@@ -544,34 +529,20 @@ router.post("/auth/admin/change-user-password", requireRole("admin", "clerk"), a
 
     // Hash and update new password
     const hashed = await hashPassword(newPassword);
-    const updateResult = await db
+    const [updatedUser] = await db
       .update(usersTable)
       .set({ password: hashed })
       .where(eq(usersTable.id, userId))
       .returning();
 
-    if (!updateResult || updateResult.length === 0) {
-      return res.status(500).json({ error: "Password update failed" });
-    }
-
-    // Verify the password was actually updated by fetching fresh from DB
-    const verifyUsers = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-    const verifyUser = verifyUsers[0];
-    const isNewPasswordCorrect = await verifyPassword(newPassword, verifyUser.password);
-    
-    if (!isNewPasswordCorrect) {
-      req.log.error("Password verification failed after update for user:", userId);
-      return res.status(500).json({ error: "Password update verification failed" });
-    }
-
     return res.json({ 
       success: true, 
       message: "Password changed successfully",
       user: {
-        id: updateResult[0].id,
-        username: updateResult[0].username,
-        name: updateResult[0].name,
-        email: updateResult[0].email
+        id: updatedUser.id,
+        username: updatedUser.username,
+        name: updatedUser.name,
+        email: updatedUser.email
       }
     });
   } catch (err) {
