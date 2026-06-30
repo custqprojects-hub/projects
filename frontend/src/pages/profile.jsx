@@ -12,13 +12,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { readProfilePhotoAsDataUrl } from "@/lib/profile-photo";
 import { Link } from "wouter";
-import { User, Mail, Phone, Calendar, Shield, Building, Award, Users, CreditCard, FileText, CheckCircle, Edit, MapPin, Trash2, Download, File, BookOpen } from "lucide-react";
+import { User, Mail, Phone, Calendar, Shield, Building, Award, Users, CreditCard, FileText, CheckCircle, Edit, MapPin, Trash2, Download, File, BookOpen, Lock, Eye, EyeOff } from "lucide-react";
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [openEdit, setOpenEdit] = useState(false);
+  const [openChangePassword, setOpenChangePassword] = useState(false);
+  const [changePasswordForm, setChangePasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [changePasswordError, setChangePasswordError] = useState("");
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
 
   // Queries depending on role
   // Role checks - Define ALL first
@@ -98,6 +111,69 @@ export default function Profile() {
         bankAccount: editForm.bankAccount,
       }
     });
+  };
+
+  // Change password handler
+  const handleChangePassword = async (e) => {
+    e?.preventDefault?.();
+    setChangePasswordError("");
+
+    if (!changePasswordForm.currentPassword || !changePasswordForm.newPassword) {
+      setChangePasswordError("Please fill in all fields");
+      return;
+    }
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setChangePasswordError("New passwords do not match");
+      return;
+    }
+
+    if (changePasswordForm.newPassword.length < 6) {
+      setChangePasswordError("New password must be at least 6 characters long");
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword: changePasswordForm.currentPassword,
+          newPassword: changePasswordForm.newPassword,
+        }),
+      });
+
+      const text = await res.text();
+      let data;
+      
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.error("Response was not JSON:", text);
+        setChangePasswordError(`Server error: ${text || "No response"}`);
+        setChangePasswordLoading(false);
+        return;
+      }
+
+      if (res.ok) {
+        toast({ title: "Success!", description: "Password changed. You'll be logged out and need to sign in with your new password." });
+        setChangePasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+        setShowPasswords({ current: false, new: false, confirm: false });
+        setChangePasswordError("");
+        setOpenChangePassword(false);
+        // Logout after successful password change so user must log back in
+        setTimeout(() => logout(), 1500);
+      } else {
+        setChangePasswordError(data.error || "Failed to change password");
+      }
+    } catch (err) {
+      console.error("Password change error:", err);
+      setChangePasswordError(err.message || "Connection error");
+    } finally {
+      setChangePasswordLoading(false);
+    }
   };
 
   // Remove profile picture handler
@@ -370,6 +446,123 @@ const getDocumentAccessUrl = (doc) => {
                 <Edit className="w-4 h-4" /> Edit Profile
               </Button>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password Card */}
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Lock className="w-5 h-5" /> Security & Password
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">Change Password</p>
+              <p className="text-sm text-muted-foreground">Update your password to keep your account secure</p>
+            </div>
+            <Dialog open={openChangePassword} onOpenChange={setOpenChangePassword}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <Lock className="w-4 h-4" /> Change Password
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Change Your Password</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div>
+                    <Label htmlFor="current-pwd">Current Password</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        id="current-pwd"
+                        type={showPasswords.current ? "text" : "password"}
+                        placeholder="Enter your current password"
+                        value={changePasswordForm.currentPassword}
+                        onChange={(e) => setChangePasswordForm(f => ({ ...f, currentPassword: e.target.value }))}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords(s => ({ ...s, current: !s.current }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="new-pwd">New Password</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        id="new-pwd"
+                        type={showPasswords.new ? "text" : "password"}
+                        placeholder="Enter new password (min. 6 characters)"
+                        value={changePasswordForm.newPassword}
+                        onChange={(e) => setChangePasswordForm(f => ({ ...f, newPassword: e.target.value }))}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords(s => ({ ...s, new: !s.new }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="confirm-pwd">Confirm New Password</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        id="confirm-pwd"
+                        type={showPasswords.confirm ? "text" : "password"}
+                        placeholder="Re-enter new password"
+                        value={changePasswordForm.confirmPassword}
+                        onChange={(e) => setChangePasswordForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords(s => ({ ...s, confirm: !s.confirm }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  {changePasswordError && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                      <p className="text-sm text-red-400">{changePasswordError}</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        setOpenChangePassword(false);
+                        setChangePasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                        setShowPasswords({ current: false, new: false, confirm: false });
+                        setChangePasswordError("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      disabled={changePasswordLoading}
+                      onClick={handleChangePassword}
+                    >
+                      {changePasswordLoading ? "Updating..." : "Update Password"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardContent>
       </Card>

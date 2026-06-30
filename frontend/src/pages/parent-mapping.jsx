@@ -13,7 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Search, Mail, Phone, User, Users, CheckCircle2, 
   AlertCircle, Sparkles, UserPlus, ArrowLeft, 
-  Grid, List, Eye, Shield, Info, X, KeyRound, Copy, Check
+  Grid, List, Eye, Shield, Info, X, KeyRound, Copy, Check,
+  ChevronLeft, ChevronRight, Edit, Save
 } from "lucide-react";
 
 export default function ParentMapping() {
@@ -23,7 +24,11 @@ export default function ParentMapping() {
     const queryClient = useQueryClient();
     const [showDemoData, setShowDemoData] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
+    const [viewMode, setViewMode] = useState("table");
+    
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(5);
     
     // Modal states
     const [linkOpen, setLinkOpen] = useState(false);
@@ -35,6 +40,15 @@ export default function ParentMapping() {
     const [createParentForm, setCreateParentForm] = useState({ name: "", email: "", phone: "", address: "", studentId: "" });
     const [parentCredentials, setParentCredentials] = useState(null);
     const [copiedCredential, setCopiedCredential] = useState("");
+    
+    // Edit states
+    const [editingParent, setEditingParent] = useState(null);
+    const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", address: "" });
+    const [editValidationErrors, setEditValidationErrors] = useState({
+        name: "",
+        email: "",
+        phone: ""
+    });
     
     // Validation error states
     const [validationErrors, setValidationErrors] = useState({
@@ -136,6 +150,32 @@ export default function ParentMapping() {
         },
     });
 
+    const updateParentMutation = useMutation({
+        mutationFn: async ({ id, data }) => {
+            const res = await fetch(`/api/students/parents/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+            if (!res.ok) {
+                const error = await res.json().catch(() => ({}));
+                throw new Error(error.error || "Failed to update parent");
+            }
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["students", "parents"] });
+            queryClient.invalidateQueries({ queryKey: ["students"] });
+            toast({ title: "Parent updated successfully" });
+            setEditingParent(null);
+            setEditForm({ name: "", email: "", phone: "", address: "" });
+            setEditValidationErrors({ name: "", email: "", phone: "" });
+        },
+        onError: (err) => {
+            toast({ title: "Failed to update parent", description: err.message, variant: "destructive" });
+        }
+    });
+
     const unlinkMutation = useMutation({
         mutationFn: async ({ studentId }) => {
             const res = await fetch(`/api/students/${studentId}`, {
@@ -180,7 +220,6 @@ export default function ParentMapping() {
     };
 
     const handleNameChange = (value) => {
-        // Only allow letters and spaces
         const filtered = value.replace(/[^A-Za-z\s]/g, '');
         setCreateParentForm((f) => ({ ...f, name: filtered }));
         setValidationErrors((prev) => ({ ...prev, name: validateName(filtered) }));
@@ -192,12 +231,51 @@ export default function ParentMapping() {
     };
 
     const handlePhoneChange = (value) => {
-        // Only allow digits
         const cleaned = value.replace(/\D/g, '');
-        // Limit to 10 digits
         const limited = cleaned.slice(0, 10);
         setCreateParentForm((f) => ({ ...f, phone: limited }));
         setValidationErrors((prev) => ({ ...prev, phone: validatePhone(limited) }));
+    };
+
+    // Edit validation functions
+    const validateEditName = (name) => {
+        if (!name) return "Parent name is required";
+        if (!/^[A-Za-z\s]+$/.test(name)) return "Only letters (A-Z, a-z) and spaces are allowed";
+        if (name.length < 2 || name.length > 50) return "Name must be between 2-50 characters";
+        return "";
+    };
+
+    const validateEditEmail = (email) => {
+        if (!email) return "Email is required";
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,4}$/;
+        if (!emailRegex.test(email)) return "Please enter a valid email address (e.g., name@domain.com)";
+        return "";
+    };
+
+    const validateEditPhone = (phone) => {
+        if (!phone) return "Phone number is required";
+        const cleaned = phone.replace(/\D/g, '');
+        if (cleaned.length !== 10) return "Phone number must be exactly 10 digits";
+        if (!/^[6-9]/.test(cleaned)) return "Phone number must start with 6, 7, 8, or 9";
+        return "";
+    };
+
+    const handleEditNameChange = (value) => {
+        const filtered = value.replace(/[^A-Za-z\s]/g, '');
+        setEditForm((f) => ({ ...f, name: filtered }));
+        setEditValidationErrors((prev) => ({ ...prev, name: validateEditName(filtered) }));
+    };
+
+    const handleEditEmailChange = (value) => {
+        setEditForm((f) => ({ ...f, email: value }));
+        setEditValidationErrors((prev) => ({ ...prev, email: validateEditEmail(value) }));
+    };
+
+    const handleEditPhoneChange = (value) => {
+        const cleaned = value.replace(/\D/g, '');
+        const limited = cleaned.slice(0, 10);
+        setEditForm((f) => ({ ...f, phone: limited }));
+        setEditValidationErrors((prev) => ({ ...prev, phone: validateEditPhone(limited) }));
     };
 
     const isFormValid = () => {
@@ -205,6 +283,14 @@ export default function ParentMapping() {
         const emailValid = !validateEmail(createParentForm.email);
         const phoneValid = !validatePhone(createParentForm.phone);
         const hasAddress = createParentForm.address.trim().length > 0;
+        return nameValid && emailValid && phoneValid && hasAddress;
+    };
+
+    const isEditFormValid = () => {
+        const nameValid = !validateEditName(editForm.name);
+        const emailValid = !validateEditEmail(editForm.email);
+        const phoneValid = !validateEditPhone(editForm.phone);
+        const hasAddress = editForm.address.trim().length > 0;
         return nameValid && emailValid && phoneValid && hasAddress;
     };
 
@@ -216,6 +302,7 @@ export default function ParentMapping() {
             username: "parent",
             phone: "9876543210",
             email: "parent@email.com",
+            address: "123 Main St, Mumbai",
             children: [
                 { id: 101, name: "Aarav Mehta", class: "Grade 10-A" },
                 { id: 102, name: "Isha Mehta", class: "Grade 8-B" }
@@ -227,6 +314,7 @@ export default function ParentMapping() {
             username: "anita_parent",
             phone: "9812345678",
             email: "anita.sharma@email.com",
+            address: "456 Park Ave, Delhi",
             children: [
                 { id: 103, name: "Rahul Sharma", class: "Grade 12-C" }
             ]
@@ -237,7 +325,40 @@ export default function ParentMapping() {
             username: "vikram_parent",
             phone: "",
             email: "vikram.m@email.com",
+            address: "789 Lake Rd, Bangalore",
             children: []
+        },
+        {
+            id: 994,
+            name: "Priya Patel",
+            username: "priya_parent",
+            phone: "9876543211",
+            email: "priya.p@email.com",
+            address: "321 Oak St, Chennai",
+            children: [
+                { id: 104, name: "Arjun Patel", class: "Grade 9-A" },
+                { id: 105, name: "Meera Patel", class: "Grade 7-B" }
+            ]
+        },
+        {
+            id: 995,
+            name: "Suresh Kumar",
+            username: "suresh_parent",
+            phone: "9812345679",
+            email: "suresh.k@email.com",
+            address: "654 Pine Rd, Hyderabad",
+            children: []
+        },
+        {
+            id: 996,
+            name: "Lakshmi Iyer",
+            username: "lakshmi_parent",
+            phone: "9876543212",
+            email: "lakshmi.i@email.com",
+            address: "987 Rose Ave, Pune",
+            children: [
+                { id: 106, name: "Karthik Iyer", class: "Grade 11-A" }
+            ]
         }
     ];
 
@@ -311,8 +432,7 @@ export default function ParentMapping() {
     };
 
     const handleCopyCredential = (label, value) => {
-        if (!value)
-            return;
+        if (!value) return;
         navigator.clipboard.writeText(value).then(() => {
             setCopiedCredential(label);
             setTimeout(() => setCopiedCredential(""), 1500);
@@ -321,6 +441,42 @@ export default function ParentMapping() {
 
     const handleOpenDetailModal = (parent) => {
         setDetailParent(parent);
+    };
+
+    const handleEditClick = (parent, e) => {
+        e.stopPropagation();
+        setEditingParent(parent);
+        setEditForm({
+            name: parent.name || "",
+            email: parent.email || "",
+            phone: parent.phone || "",
+            address: parent.address || ""
+        });
+        setEditValidationErrors({ name: "", email: "", phone: "" });
+    };
+
+    const handleCancelEdit = (e) => {
+        if (e) e.stopPropagation();
+        setEditingParent(null);
+        setEditForm({ name: "", email: "", phone: "", address: "" });
+        setEditValidationErrors({ name: "", email: "", phone: "" });
+    };
+
+    const handleSaveEdit = async (e) => {
+        e.stopPropagation();
+        if (!isEditFormValid() || !editingParent) return;
+        
+        const updateData = {
+            name: editForm.name.trim(),
+            email: editForm.email.trim(),
+            phone: editForm.phone.trim(),
+            address: editForm.address.trim()
+        };
+        
+        updateParentMutation.mutate({
+            id: editingParent.id,
+            data: updateData
+        });
     };
 
     // Filter parents based on search query
@@ -336,6 +492,28 @@ export default function ParentMapping() {
             (p.children && p.children.some(c => c.name?.toLowerCase().includes(query)))
         );
     });
+
+    // Sort parents in descending order by ID (newest first)
+    const sortedParents = [...filteredParents].sort((a, b) => b.id - a.id);
+
+    // Pagination logic
+    const totalItems = sortedParents.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+    const currentParents = sortedParents.slice(startIndex, endIndex);
+
+    // Reset to first page when search changes
+    const handleSearchChange = (e) => {
+        setSearchQuery(e.target.value);
+        setCurrentPage(1);
+    };
+
+    const handlePageChange = (page) => {
+        setCurrentPage(page);
+        // Scroll to top of table
+        document.querySelector('.table-container')?.scrollIntoView({ behavior: 'smooth' });
+    };
 
     // Show only students that are not already assigned to a parent in the dropdown.
     const assignedStudentIds = new Set(
@@ -467,17 +645,34 @@ export default function ParentMapping() {
                     <Input 
                         placeholder="Search parents by ID, name, username, phone, email, address, or ward..." 
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onChange={handleSearchChange}
                         className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/20 focus-visible:ring-sky-500"
                     />
+                </div>
+                <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground whitespace-nowrap">Show:</label>
+                    <Select value={String(itemsPerPage)} onValueChange={(value) => {
+                        setItemsPerPage(Number(value));
+                        setCurrentPage(1);
+                    }}>
+                        <SelectTrigger className="w-20 h-9 bg-white/5 border-white/10 text-white">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="5">5</SelectItem>
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="20">20</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
             </div>
 
             {/* Main Content Area */}
             {parentsQuery.isLoading && !showDemoData ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <Skeleton key={i} className="h-44 w-full rounded-xl" />
+                <div className="space-y-3">
+                    {Array.from({ length: itemsPerPage }).map((_, i) => (
+                        <Skeleton key={i} className="h-16 w-full rounded-xl" />
                     ))}
                 </div>
             ) : parentsQuery.isError && !showDemoData ? (
@@ -489,157 +684,481 @@ export default function ParentMapping() {
             ) : viewMode === "grid" ? (
                 // GRID VIEW: Parent Cards
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredParents.map((p) => {
+                    {currentParents.map((p) => {
                         const hasChildren = p.children && p.children.length > 0;
                         const avatarInitials = p.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+                        const isEditing = editingParent?.id === p.id;
                         return (
                             <Card 
                                 key={p.id} 
                                 className="glass-card glass-hover border border-white/10 hover:border-sky-500/30 transition-all cursor-pointer flex flex-col justify-between"
-                                onClick={() => handleOpenDetailModal(p)}
+                                onClick={() => !isEditing && handleOpenDetailModal(p)}
                             >
                                 <CardContent className="p-5 space-y-4">
-                                    <div className="flex items-start gap-3 justify-between">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <div className="w-10 h-10 rounded-full bg-sky-500/15 text-sky-400 flex items-center justify-center font-bold text-sm shrink-0">
-                                                {avatarInitials}
+                                    {isEditing ? (
+                                        // Edit form for grid view
+                                        <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold text-white/70">Name *</label>
+                                                <Input
+                                                    value={editForm.name}
+                                                    onChange={(e) => handleEditNameChange(e.target.value)}
+                                                    placeholder="Parent name"
+                                                    className={`h-9 bg-white/5 border-white/10 text-white placeholder:text-white/25 ${editValidationErrors.name ? 'border-red-500' : ''}`}
+                                                />
+                                                {editValidationErrors.name && (
+                                                    <p className="text-xs text-red-400">{editValidationErrors.name}</p>
+                                                )}
                                             </div>
-                                            <div className="min-w-0">
-                                                <p className="font-semibold text-white/95 truncate text-sm">{p.name}</p>
-                                                <p className="text-[10px] text-sky-300 font-mono">{p.parentId || `#${p.id}`}</p>
-                                                <p className="text-xs text-muted-foreground font-mono">@{p.username}</p>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold text-white/70">Email *</label>
+                                                <Input
+                                                    type="email"
+                                                    value={editForm.email}
+                                                    onChange={(e) => handleEditEmailChange(e.target.value)}
+                                                    placeholder="parent@example.com"
+                                                    className={`h-9 bg-white/5 border-white/10 text-white placeholder:text-white/25 ${editValidationErrors.email ? 'border-red-500' : ''}`}
+                                                />
+                                                {editValidationErrors.email && (
+                                                    <p className="text-xs text-red-400">{editValidationErrors.email}</p>
+                                                )}
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold text-white/70">Phone *</label>
+                                                <Input
+                                                    type="tel"
+                                                    value={editForm.phone}
+                                                    onChange={(e) => handleEditPhoneChange(e.target.value)}
+                                                    placeholder="10-digit phone"
+                                                    className={`h-9 bg-white/5 border-white/10 text-white placeholder:text-white/25 ${editValidationErrors.phone ? 'border-red-500' : ''}`}
+                                                />
+                                                {editValidationErrors.phone && (
+                                                    <p className="text-xs text-red-400">{editValidationErrors.phone}</p>
+                                                )}
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold text-white/70">Address *</label>
+                                                <Input
+                                                    value={editForm.address}
+                                                    onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                                                    placeholder="Residential address"
+                                                    className="h-9 bg-white/5 border-white/10 text-white placeholder:text-white/25"
+                                                />
                                             </div>
                                         </div>
-                                        <Badge className={hasChildren ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]" : "bg-red-500/10 text-red-400 border border-red-500/20 text-[10px]"}>
-                                            {hasChildren ? "Mapped" : "Unmapped"}
-                                        </Badge>
-                                    </div>
-
-                                    <div className="space-y-1.5 text-xs text-muted-foreground border-t border-white/5 pt-3">
-                                        {p.phone && <p className="flex items-center gap-1.5">📞 {p.phone}</p>}
-                                        {p.email && <p className="flex items-center gap-1.5 truncate">✉️ {p.email}</p>}
-                                        {p.address && <p className="flex items-center gap-1.5 truncate">Address: {p.address}</p>}
-                                    </div>
-
-                                    <div className="space-y-1.5 border-t border-white/5 pt-3 flex-1">
-                                        <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Linked Wards</p>
-                                        {hasChildren ? (
-                                            <div className="flex flex-wrap gap-1.5 mt-1">
-                                                {p.children.map((child) => (
-                                                    <Badge 
-                                                        key={child.id} 
-                                                        variant="secondary" 
-                                                        className="bg-sky-500/10 text-sky-400 border border-sky-500/20 pr-1.5 pl-2 py-0.5 inline-flex items-center gap-1 text-[11px]"
-                                                        onClick={(e) => e.stopPropagation()} // Prevent card detail click
-                                                    >
-                                                        {child.name} ({child.class})
-                                                        <button 
-                                                            type="button"
-                                                            onClick={(e) => handleUnlinkStudent(child.id, e)}
-                                                            className="hover:bg-sky-500/25 rounded-full p-0.5 text-sky-400/80 hover:text-sky-300"
-                                                            title="Unlink ward"
-                                                        >
-                                                            <X className="w-2.5 h-2.5" />
-                                                        </button>
-                                                    </Badge>
-                                                ))}
+                                    ) : (
+                                        <>
+                                            <div className="flex items-start gap-3 justify-between">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className="w-10 h-10 rounded-full bg-sky-500/15 text-sky-400 flex items-center justify-center font-bold text-sm shrink-0">
+                                                        {avatarInitials}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-semibold text-white/95 truncate text-sm">{p.name}</p>
+                                                        <p className="text-[10px] text-sky-300 font-mono">{p.parentId || `#${p.id}`}</p>
+                                                        <p className="text-xs text-muted-foreground font-mono">@{p.username}</p>
+                                                    </div>
+                                                </div>
+                                                <Badge className={hasChildren ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]" : "bg-red-500/10 text-red-400 border border-red-500/20 text-[10px]"}>
+                                                    {hasChildren ? "Mapped" : "Unmapped"}
+                                                </Badge>
                                             </div>
-                                        ) : (
-                                            <span className="text-xs text-muted-foreground/50 italic">No mapped students</span>
-                                        )}
-                                    </div>
+
+                                            <div className="space-y-1.5 text-xs text-muted-foreground border-t border-white/5 pt-3">
+                                                {p.phone && <p className="flex items-center gap-1.5">📞 {p.phone}</p>}
+                                                {p.email && <p className="flex items-center gap-1.5 truncate">✉️ {p.email}</p>}
+                                                {p.address && <p className="flex items-center gap-1.5 truncate">Address: {p.address}</p>}
+                                            </div>
+
+                                            <div className="space-y-1.5 border-t border-white/5 pt-3 flex-1">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Linked Wards</p>
+                                                {hasChildren ? (
+                                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                                        {p.children.map((child) => (
+                                                            <Badge 
+                                                                key={child.id} 
+                                                                variant="secondary" 
+                                                                className="bg-sky-500/10 text-sky-400 border border-sky-500/20 pr-1.5 pl-2 py-0.5 inline-flex items-center gap-1 text-[11px]"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                {child.name} ({child.class})
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={(e) => handleUnlinkStudent(child.id, e)}
+                                                                    className="hover:bg-sky-500/25 rounded-full p-0.5 text-sky-400/80 hover:text-sky-300"
+                                                                    title="Unlink ward"
+                                                                >
+                                                                    <X className="w-2.5 h-2.5" />
+                                                                </button>
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground/50 italic">No mapped students</span>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
                                 </CardContent>
                                 <div className="px-5 pb-5 pt-1 border-t border-white/5 flex gap-2 justify-end">
-                                    <Button 
-                                        size="xs" 
-                                        variant="ghost" 
-                                        className="h-8 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                                        onClick={(e) => { e.stopPropagation(); handleOpenDetailModal(p); }}
-                                    >
-                                        <Eye className="w-3.5 h-3.5" /> View Profile
-                                    </Button>
-                                    <Button 
-                                        size="xs" 
-                                        variant="outline" 
-                                        className="h-8 text-xs gap-1 text-sky-400 border-sky-500/20 hover:bg-sky-500/10"
-                                        onClick={(e) => handleOpenLinkModal(p, e)}
-                                    >
-                                        <UserPlus className="w-3.5 h-3.5" /> Link Student
-                                    </Button>
+                                    {isEditing ? (
+                                        <>
+                                            <Button 
+                                                size="xs" 
+                                                variant="ghost" 
+                                                className="h-8 text-xs gap-1"
+                                                onClick={handleCancelEdit}
+                                            >
+                                                <X className="w-3.5 h-3.5" /> Cancel
+                                            </Button>
+                                            <Button 
+                                                size="xs" 
+                                                variant="default" 
+                                                className="h-8 text-xs gap-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"
+                                                onClick={handleSaveEdit}
+                                                disabled={!isEditFormValid() || updateParentMutation.isPending}
+                                            >
+                                                <Save className="w-3.5 h-3.5" /> 
+                                                {updateParentMutation.isPending ? "Saving..." : "Save"}
+                                            </Button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Button 
+                                                size="xs" 
+                                                variant="ghost" 
+                                                className="h-8 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                                                onClick={(e) => { e.stopPropagation(); handleOpenDetailModal(p); }}
+                                            >
+                                                <Eye className="w-3.5 h-3.5" /> View
+                                            </Button>
+                                            <Button 
+                                                size="xs" 
+                                                variant="ghost" 
+                                                className="h-8 text-xs gap-1 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                                onClick={(e) => handleEditClick(p, e)}
+                                            >
+                                                <Edit className="w-3.5 h-3.5" /> Edit
+                                            </Button>
+                                            <Button 
+                                                size="xs" 
+                                                variant="outline" 
+                                                className="h-8 text-xs gap-1 text-sky-400 border-sky-500/20 hover:bg-sky-500/10"
+                                                onClick={(e) => handleOpenLinkModal(p, e)}
+                                            >
+                                                <UserPlus className="w-3.5 h-3.5" /> Link
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </Card>
                         );
                     })}
                 </div>
             ) : (
-                // TABLE VIEW: Listing Layout
-                <Card className="glass-card border-t-2 border-t-sky-400/30">
-                    <CardContent className="p-0">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead>
-                                    <tr className="border-b border-border/40 text-xs text-muted-foreground bg-white/5">
-                                        <th className="py-3 px-4">Parent Account</th>
-                                        <th className="py-3 px-4">Contact Details</th>
-                                        <th className="py-3 px-4">Linked Students</th>
-                                        <th className="py-3 px-4">Status</th>
-                                        <th className="py-3 px-4 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredParents.map((p) => {
-                                        const hasChildren = p.children && p.children.length > 0;
-                                        return (
-                                            <tr key={p.id} className="border-b border-border/20 hover:bg-white/5 cursor-pointer" onClick={() => handleOpenDetailModal(p)}>
-                                                <td className="py-3 px-4">
-                                                    <p className="font-semibold text-white/90">{p.name}</p>
-                                                    <p className="text-[10px] text-sky-300 font-mono">{p.parentId || `#${p.id}`}</p>
-                                                    <p className="text-xs text-muted-foreground font-mono">@{p.username}</p>
-                                                </td>
-                                                <td className="py-3 px-4 text-xs">
-                                                    <p className="text-muted-foreground">📞 {p.phone || "—"}</p>
-                                                    <p className="text-muted-foreground">✉️ {p.email || "—"}</p>
-                                                    <p className="text-muted-foreground truncate max-w-[16rem]">Address: {p.address || "—"}</p>
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    {hasChildren ? (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {p.children.map((child) => (
-                                                                <Badge key={child.id} variant="secondary" className="bg-sky-500/10 text-sky-400 border border-sky-500/20 pr-1.5 pl-2 py-0.5 inline-flex items-center gap-1 text-[11px]" onClick={(e) => e.stopPropagation()}>
-                                                                    {child.name} ({child.class})
-                                                                    <button 
-                                                                        type="button"
-                                                                        onClick={(e) => handleUnlinkStudent(child.id, e)}
-                                                                        className="hover:bg-sky-500/20 rounded-full p-0.5 text-sky-400/70 hover:text-sky-300"
-                                                                    >
-                                                                        <X className="w-2.5 h-2.5" />
-                                                                    </button>
-                                                                </Badge>
-                                                            ))}
+                // TABLE VIEW: Enhanced Listing Layout with Edit Functionality
+                <div className="table-container">
+                    <Card className="glass-card border-t-2 border-t-sky-400/30 overflow-hidden">
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-white/5">
+                                        <tr className="border-b border-border/40 text-xs text-muted-foreground uppercase tracking-wider">
+                                            <th className="py-3.5 px-4 font-semibold">Parent Account</th>
+                                            <th className="py-3.5 px-4 font-semibold">Contact Details</th>
+                                            <th className="py-3.5 px-4 font-semibold">Address</th>
+                                            <th className="py-3.5 px-4 font-semibold">Linked Students</th>
+                                            <th className="py-3.5 px-4 font-semibold">Status</th>
+                                            <th className="py-3.5 px-4 text-right font-semibold">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {currentParents.map((p) => {
+                                            const hasChildren = p.children && p.children.length > 0;
+                                            const avatarInitials = p.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+                                            const isEditing = editingParent?.id === p.id;
+                                            
+                                            return (
+                                                <tr 
+                                                    key={p.id} 
+                                                    className={`border-b border-border/20 hover:bg-white/5 transition-colors ${!isEditing ? 'cursor-pointer group' : ''}`}
+                                                    onClick={() => !isEditing && handleOpenDetailModal(p)}
+                                                >
+                                                    <td className="py-3.5 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-sky-500/15 text-sky-400 flex items-center justify-center font-bold text-xs shrink-0">
+                                                                {avatarInitials}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-white/90 group-hover:text-white transition-colors">{p.name}</p>
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="text-[10px] text-sky-300 font-mono">{p.parentId || `#${p.id}`}</p>
+                                                                    <span className="text-[10px] text-muted-foreground">•</span>
+                                                                    <p className="text-[10px] text-muted-foreground font-mono">@{p.username}</p>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground/45 italic">No wards linked</span>
-                                                    )}
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    <Badge className={hasChildren ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25" : "bg-red-500/10 text-red-400 border border-red-500/25"}>
-                                                        {hasChildren ? "Active" : "Unlinked"}
-                                                    </Badge>
-                                                </td>
-                                                <td className="py-3 px-4 text-right">
-                                                    <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                                        <Button size="xs" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => handleOpenDetailModal(p)}><Eye className="w-3.5 h-3.5" /></Button>
-                                                        <Button size="xs" variant="outline" className="h-7 text-xs gap-1 text-sky-400 border-sky-500/20 hover:bg-sky-500/10" onClick={(e) => handleOpenLinkModal(p, e)}><UserPlus className="w-3.5 h-3.5" /></Button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-xs">
+                                                        {isEditing ? (
+                                                            <div className="space-y-2 min-w-[200px]" onClick={(e) => e.stopPropagation()}>
+                                                                <div className="space-y-1">
+                                                                    <Input
+                                                                        value={editForm.name}
+                                                                        onChange={(e) => handleEditNameChange(e.target.value)}
+                                                                        placeholder="Name"
+                                                                        className={`h-8 bg-white/5 border-white/10 text-white placeholder:text-white/25 text-xs ${editValidationErrors.name ? 'border-red-500' : ''}`}
+                                                                    />
+                                                                    {editValidationErrors.name && (
+                                                                        <p className="text-[10px] text-red-400">{editValidationErrors.name}</p>
+                                                                    )}
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <Input
+                                                                        type="email"
+                                                                        value={editForm.email}
+                                                                        onChange={(e) => handleEditEmailChange(e.target.value)}
+                                                                        placeholder="Email"
+                                                                        className={`h-8 bg-white/5 border-white/10 text-white placeholder:text-white/25 text-xs ${editValidationErrors.email ? 'border-red-500' : ''}`}
+                                                                    />
+                                                                    {editValidationErrors.email && (
+                                                                        <p className="text-[10px] text-red-400">{editValidationErrors.email}</p>
+                                                                    )}
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <Input
+                                                                        type="tel"
+                                                                        value={editForm.phone}
+                                                                        onChange={(e) => handleEditPhoneChange(e.target.value)}
+                                                                        placeholder="Phone"
+                                                                        className={`h-8 bg-white/5 border-white/10 text-white placeholder:text-white/25 text-xs ${editValidationErrors.phone ? 'border-red-500' : ''}`}
+                                                                    />
+                                                                    {editValidationErrors.phone && (
+                                                                        <p className="text-[10px] text-red-400">{editValidationErrors.phone}</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-0.5">
+                                                                {p.phone ? (
+                                                                    <p className="text-muted-foreground flex items-center gap-1.5">
+                                                                        <Phone className="w-3 h-3" /> {p.phone}
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-muted-foreground/40 flex items-center gap-1.5">
+                                                                        <Phone className="w-3 h-3" /> No phone
+                                                                    </p>
+                                                                )}
+                                                                {p.email ? (
+                                                                    <p className="text-muted-foreground flex items-center gap-1.5 truncate max-w-[180px]">
+                                                                        <Mail className="w-3 h-3" /> {p.email}
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-muted-foreground/40 flex items-center gap-1.5 truncate max-w-[180px]">
+                                                                        <Mail className="w-3 h-3" /> No email
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-xs">
+                                                        {isEditing ? (
+                                                            <div onClick={(e) => e.stopPropagation()}>
+                                                                <Input
+                                                                    value={editForm.address}
+                                                                    onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                                                                    placeholder="Address"
+                                                                    className="h-8 bg-white/5 border-white/10 text-white placeholder:text-white/25 text-xs"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-muted-foreground max-w-[150px] truncate block">
+                                                                {p.address || <span className="text-muted-foreground/40">—</span>}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3.5 px-4">
+                                                        {hasChildren ? (
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {p.children.map((child) => (
+                                                                    <Badge 
+                                                                        key={child.id} 
+                                                                        variant="secondary" 
+                                                                        className="bg-sky-500/10 text-sky-400 border border-sky-500/20 pr-1 pl-2 py-0.5 inline-flex items-center gap-1 text-[10px] font-medium"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        {child.name}
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={(e) => handleUnlinkStudent(child.id, e)}
+                                                                            className="hover:bg-sky-500/20 rounded-full p-0.5 text-sky-400/60 hover:text-sky-300 transition-colors"
+                                                                            title="Unlink ward"
+                                                                        >
+                                                                            <X className="w-2.5 h-2.5" />
+                                                                        </button>
+                                                                    </Badge>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground/40 italic">No wards linked</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3.5 px-4">
+                                                        <Badge className={`${hasChildren ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25" : "bg-amber-500/10 text-amber-400 border border-amber-500/25"} text-[10px] font-medium px-2.5 py-0.5`}>
+                                                            {hasChildren ? "● Active" : "○ Unlinked"}
+                                                        </Badge>
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-right">
+                                                        <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                            {isEditing ? (
+                                                                <>
+                                                                    <Button 
+                                                                        size="xs" 
+                                                                        variant="ghost" 
+                                                                        className="h-7 px-2 text-xs gap-1"
+                                                                        onClick={handleCancelEdit}
+                                                                    >
+                                                                        <X className="w-3 h-3" /> Cancel
+                                                                    </Button>
+                                                                    <Button 
+                                                                        size="xs" 
+                                                                        variant="default" 
+                                                                        className="h-7 px-2 text-xs gap-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"
+                                                                        onClick={handleSaveEdit}
+                                                                        disabled={!isEditFormValid() || updateParentMutation.isPending}
+                                                                    >
+                                                                        <Save className="w-3 h-3" /> 
+                                                                        {updateParentMutation.isPending ? "Saving..." : "Save"}
+                                                                    </Button>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Button 
+                                                                        size="xs" 
+                                                                        variant="ghost" 
+                                                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-white/10"
+                                                                        onClick={() => handleOpenDetailModal(p)}
+                                                                        title="View Details"
+                                                                    >
+                                                                        <Eye className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                    <Button 
+                                                                        size="xs" 
+                                                                        variant="ghost" 
+                                                                        className="h-7 w-7 p-0 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                                                        onClick={(e) => handleEditClick(p, e)}
+                                                                        title="Edit Parent"
+                                                                    >
+                                                                        <Edit className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                    <Button 
+                                                                        size="xs" 
+                                                                        variant="ghost" 
+                                                                        className="h-7 w-7 p-0 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                                                        onClick={(e) => handleOpenLinkModal(p, e)}
+                                                                        title={hasChildren ? "Link another student" : "Link a student"}
+                                                                    >
+                                                                        <UserPlus className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Pagination Controls */}
+            {filteredParents.length > 0 && (
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-2">
+                    <div className="text-sm text-muted-foreground">
+                        Showing <span className="font-semibold text-white">{startIndex + 1}</span> to <span className="font-semibold text-white">{endIndex}</span> of <span className="font-semibold text-white">{totalItems}</span> parents
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="h-8 w-8 p-0 border-white/10 hover:bg-white/5"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <div className="flex items-center gap-1.5">
+                            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                                let pageNumber;
+                                if (totalPages <= 7) {
+                                    pageNumber = i + 1;
+                                } else if (currentPage <= 4) {
+                                    pageNumber = i + 1;
+                                    if (i === 6) pageNumber = totalPages;
+                                } else if (currentPage >= totalPages - 3) {
+                                    pageNumber = totalPages - 6 + i;
+                                } else {
+                                    pageNumber = currentPage - 3 + i;
+                                    if (i === 0) pageNumber = 1;
+                                    if (i === 6) pageNumber = totalPages;
+                                }
+                                
+                                // Show ellipsis
+                                if (i === 0 && pageNumber > 1) {
+                                    return (
+                                        <Button
+                                            key="ellipsis-start"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 p-0 text-muted-foreground cursor-default hover:bg-transparent"
+                                            disabled
+                                        >
+                                            …
+                                        </Button>
+                                    );
+                                }
+                                if (i === 6 && pageNumber < totalPages - 1) {
+                                    return (
+                                        <Button
+                                            key="ellipsis-end"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 p-0 text-muted-foreground cursor-default hover:bg-transparent"
+                                            disabled
+                                        >
+                                            …
+                                        </Button>
+                                    );
+                                }
+                                
+                                return (
+                                    <Button
+                                        key={pageNumber}
+                                        variant={currentPage === pageNumber ? "secondary" : "ghost"}
+                                        size="sm"
+                                        onClick={() => handlePageChange(pageNumber)}
+                                        className={`h-8 w-8 p-0 ${currentPage === pageNumber ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'hover:bg-white/5'}`}
+                                    >
+                                        {pageNumber}
+                                    </Button>
+                                );
+                            })}
                         </div>
-                    </CardContent>
-                </Card>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="h-8 w-8 p-0 border-white/10 hover:bg-white/5"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </Button>
+                    </div>
+                </div>
             )}
 
             {/* Parent Details Card Modal */}
@@ -782,7 +1301,6 @@ export default function ParentMapping() {
                                 />
                             </div>
                             <div className="space-y-1.5">
-                               
                                 <p className="text-[11px] text-muted-foreground">
                                     Provide the same phone number that is registered with the student's profile to establish an automatic link. If the student is not yet linked, you can manually link them after creating the parent account.
                                 </p>

@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AdminPasswordField } from "@/components/admin-password-field";
 import { ArrowLeft, Phone, Mail, Briefcase, GraduationCap, Calendar, IndianRupee, FileText, Upload, Trash2, AlertTriangle, ClipboardList, Wallet, Award, BookOpen, Save, CheckCircle2, XCircle, Clock, Eye, Pencil, X} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { IdCard } from "@/components/id-card";
@@ -353,6 +354,15 @@ export default function StaffDetail() {
                       {monthlySalary.toLocaleString("en-IN")}
                     </span>}/>)}
               </Section>
+              {isAdmin && (
+                <Section title="Admin Controls">
+                  <AdminPasswordField 
+                    userId={s.id} 
+                    username={s.name}
+                    onPasswordChanged={() => qc.invalidateQueries({ queryKey: ["staff", id] })}
+                  />
+                </Section>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

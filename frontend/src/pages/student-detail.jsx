@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AdminPasswordField } from "@/components/admin-password-field";
 import { ArrowLeft, Phone, Mail, MapPin, AlertTriangle, Wallet, Award, Bed, Bus, FileText, Users as UsersIcon, UploadCloud, Download, Trash2, Loader2, } from "lucide-react";
 import { IdCard } from "@/components/id-card";
 const GRADE_COLORS = {
@@ -289,6 +290,18 @@ export default function StudentDetail() {
                   <Field label="Status" value={s.status}/>
                 </div>
               </div>
+              {["admin", "clerk"].includes(user?.role ?? "") && (
+                <div className="border-t border-border/50 pt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    Admin Controls
+                  </p>
+                  <AdminPasswordField 
+                    userId={s.id} 
+                    username={s.name}
+                    onPasswordChanged={() => qc.invalidateQueries({ queryKey: ["student", id] })}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
