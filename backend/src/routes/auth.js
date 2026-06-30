@@ -98,9 +98,15 @@ router.post("/auth/login", async (req, res) => {
         }
         const users = await db.select().from(usersTable).where(eq(usersTable.username, username));
         const user = users[0];
+        
+        console.log("🔑 Login attempt:", { username, userFound: !!user });
+        
         if (!user || !(await verifyPassword(password, user.password))) {
+            console.log("❌ Login failed - Invalid credentials for:", username);
             return res.status(401).json({ error: "Invalid credentials" });
         }
+        
+        console.log("✅ Login successful for:", username);
         if (await isStaffAccountInactive(user)) {
             return res.status(403).json({ error: "Your staff account is inactive. Please contact the administrator." });
         }
@@ -510,6 +516,7 @@ router.post("/auth/admin/change-user-password", requireRole("admin", "clerk"), a
     }
 
     const { userId, newPassword } = req.body;
+    console.log("🔐 Admin password change request:", { userId, passwordLength: newPassword?.length });
     
     if (!userId || !newPassword) {
       return res.status(400).json({ error: "User ID and new password are required" });
@@ -522,6 +529,7 @@ router.post("/auth/admin/change-user-password", requireRole("admin", "clerk"), a
     // Fetch the user to update
     const users = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     const targetUser = users[0];
+    console.log("👤 Target user found:", { id: targetUser?.id, username: targetUser?.username });
 
     if (!targetUser) {
       return res.status(404).json({ error: "User not found" });
@@ -529,11 +537,15 @@ router.post("/auth/admin/change-user-password", requireRole("admin", "clerk"), a
 
     // Hash and update new password
     const hashed = await hashPassword(newPassword);
+    console.log("🔒 Password hashed, updating database...");
+    
     const [updatedUser] = await db
       .update(usersTable)
       .set({ password: hashed })
       .where(eq(usersTable.id, userId))
       .returning();
+
+    console.log("✅ Password updated successfully for user:", { id: updatedUser?.id, username: updatedUser?.username });
 
     return res.json({ 
       success: true, 
@@ -546,6 +558,7 @@ router.post("/auth/admin/change-user-password", requireRole("admin", "clerk"), a
       }
     });
   } catch (err) {
+    console.error("❌ Admin password change error:", err);
     req.log.error({ err }, "Admin change user password error");
     return res.status(500).json({ error: "Internal server error" });
   }
